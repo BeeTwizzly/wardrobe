@@ -14,6 +14,20 @@ st.set_page_config(
 
 
 def main():
+    st.markdown("""
+    <style>
+    @media (max-width: 640px) {
+        [data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap;
+        }
+        [data-testid="stColumn"] {
+            flex: 0 0 48% !important;
+            min-width: 48% !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     cfg = get_config()
     conn = get_connection(cfg.db_path)
     init_db(conn)
