@@ -19,6 +19,17 @@ from vision import VALID_CATEGORIES, VALID_PATTERNS, VALID_SEASONS
 
 def render():
     """Render the My Closet page."""
+    st.markdown("""
+    <style>
+    .closet-grid img {
+        width: 100%;
+        aspect-ratio: 3 / 4;
+        object-fit: cover;
+        border-radius: 8px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.header(":material/checkroom: My Closet")
 
     cfg = get_config()
@@ -115,11 +126,13 @@ def render():
 
     # --- Grid display ---
     cols_per_row = 4
+    st.markdown('<div class="closet-grid">', unsafe_allow_html=True)
     for row_start in range(0, len(items), cols_per_row):
         cols = st.columns(cols_per_row)
         for col_idx, item in enumerate(items[row_start : row_start + cols_per_row]):
             with cols[col_idx]:
                 _render_item_card(conn, item, cfg)
+    st.markdown('</div>', unsafe_allow_html=True)
 
     conn.close()
 
