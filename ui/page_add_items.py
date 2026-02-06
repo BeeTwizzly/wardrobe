@@ -60,12 +60,20 @@ def render():
             "Please set the `ANTHROPIC_API_KEY` environment variable to use AI identification."
         )
 
-    uploaded_files = st.file_uploader(
-        "Upload clothing photos",
-        accept_multiple_files=True,
-        type=["jpg", "jpeg", "png", "webp"],
-        help=f"Max {cfg.max_upload_mb}MB per file",
-    )
+    tab_upload, tab_camera = st.tabs(["Upload Photo", "Take Photo"])
+
+    with tab_upload:
+        uploaded_files = st.file_uploader(
+            "Upload clothing photos",
+            accept_multiple_files=True,
+            type=["jpg", "jpeg", "png", "webp"],
+            help=f"Max {cfg.max_upload_mb}MB per file",
+        )
+
+    with tab_camera:
+        camera_photo = st.camera_input("Snap a photo")
+        if camera_photo:
+            uploaded_files = (uploaded_files or []) + [camera_photo]
 
     if not uploaded_files:
         st.info("Upload one or more photos to get started.")
