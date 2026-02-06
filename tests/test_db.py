@@ -11,6 +11,8 @@ from db import (
     delete_item,
     get_all_items,
     get_all_settings,
+    get_battle_history,
+    get_battle_item_stats,
     get_connection,
     get_forgotten_items,
     get_item,
@@ -24,6 +26,7 @@ from db import (
     init_db,
     log_wear,
     rate_outfit,
+    save_battle,
     save_outfit,
     set_setting,
     update_item,
@@ -45,7 +48,7 @@ def conn(tmp_path):
 
 class TestSchema:
     def test_tables_exist(self, conn):
-        """All four tables should be created."""
+        """All five tables should be created."""
         tables = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         ).fetchall()
@@ -54,6 +57,7 @@ class TestSchema:
         assert "outfits" in table_names
         assert "wear_log" in table_names
         assert "user_settings" in table_names
+        assert "battles" in table_names
 
     def test_default_settings_seeded(self, conn):
         """Default settings should be seeded on init."""
@@ -340,3 +344,112 @@ class TestClearData:
         init_db(conn)
         # Default settings should be back
         assert get_setting(conn, "location_lat") == "39.89"
+
+    def test_clear_includes_battles(self, conn):
+        save_battle(
+            conn,
+            outfit_a_ids=[1, 2],
+            outfit_b_ids=[3, 4],
+            outfit_a_name="A",
+            outfit_b_name="B",
+            winner="a",
+            occasion="test",
+        )
+        clear_all_data(conn)
+        assert len(get_battle_history(conn)) == 0
+
+
+# --- Battles ---
+
+
+class TestBattles:
+    def test_save_battle(self, conn):
+        battle_id = save_battle(
+            conn,
+            outfit_a_ids=[1, 2, 3],
+            outfit_b_ids=[4, 5, 6],
+            outfit_a_name="Outfit A",
+            outfit_b_name="Outfit B",
+            winner="a",
+            occasion="everyday",
+            weather_summary="70F, Clear",
+        )
+        assert battle_id is not None
+        assert battle_id > 0
+
+    def test_save_battle_winner_b(self, conn):
+        battle_id = save_battle(
+            conn,
+            outfit_a_ids=[1],
+            outfit_b_ids=[2],
+            outfit_a_name="A",
+            outfit_b_name="B",
+            winner="b",
+            occasion="work",
+        )
+        history = get_battle_history(conn, limit=1)
+        assert history[0]["winner"] == "b"
+
+    def test_get_battle_history(self, conn):
+        for i in range(5):
+            save_battle(
+                conn,
+                outfit_a_ids=[1],
+                outfit_b_ids=[2],
+                outfit_a_name=f"A{i}",
+                outfit_b_name=f"B{i}",
+                winner="a",
+                occasion="test",
+            )
+        history = get_battle_history(conn, limit=3)
+        assert len(history) == 3
+
+    def test_get_battle_history_empty(self, conn):
+        assert get_battle_history(conn) == []
+
+    def test_battle_history_parses_json(self, conn):
+        save_battle(
+            conn,
+            outfit_a_ids=[10, 20],
+            outfit_b_ids=[30, 40],
+            outfit_a_name="A",
+            outfit_b_name="B",
+            winner="a",
+            occasion="test",
+        )
+        history = get_battle_history(conn, limit=1)
+        assert history[0]["outfit_a_ids"] == [10, 20]
+        assert history[0]["outfit_b_ids"] == [30, 40]
+
+    def test_battle_item_stats(self, conn):
+        # Battle 1: A wins (items 1,2 win; items 3,4 lose)
+        save_battle(
+            conn,
+            outfit_a_ids=[1, 2],
+            outfit_b_ids=[3, 4],
+            outfit_a_name="A",
+            outfit_b_name="B",
+            winner="a",
+            occasion="test",
+        )
+        # Battle 2: B wins (items 5,6 lose; items 1,3 win)
+        save_battle(
+            conn,
+            outfit_a_ids=[5, 6],
+            outfit_b_ids=[1, 3],
+            outfit_a_name="C",
+            outfit_b_name="D",
+            winner="b",
+            occasion="test",
+        )
+        stats = get_battle_item_stats(conn)
+        assert stats["wins"][1] == 2  # item 1 won twice
+        assert stats["wins"][2] == 1
+        assert stats["wins"][3] == 1
+        assert stats["losses"][3] == 1  # item 3 lost once
+        assert stats["losses"][5] == 1
+        assert stats["losses"][6] == 1
+
+    def test_battle_item_stats_empty(self, conn):
+        stats = get_battle_item_stats(conn)
+        assert stats == {"wins": {}, "losses": {}}

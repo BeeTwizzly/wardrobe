@@ -57,6 +57,18 @@ def init_db(conn: sqlite3.Connection) -> None:
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS battles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            outfit_a_ids TEXT NOT NULL,
+            outfit_b_ids TEXT NOT NULL,
+            outfit_a_name TEXT NOT NULL,
+            outfit_b_name TEXT NOT NULL,
+            winner TEXT NOT NULL,
+            occasion TEXT NOT NULL,
+            weather_summary TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
 
     # Seed default settings if not present
@@ -396,11 +408,79 @@ def get_forgotten_items(
     return [dict(row) for row in rows]
 
 
+def save_battle(
+    conn: sqlite3.Connection,
+    outfit_a_ids: list[int],
+    outfit_b_ids: list[int],
+    outfit_a_name: str,
+    outfit_b_name: str,
+    winner: str,
+    occasion: str,
+    weather_summary: str | None = None,
+) -> int:
+    """Save a battle result. winner must be 'a' or 'b'. Returns the battle ID."""
+    cursor = conn.execute(
+        """INSERT INTO battles
+           (outfit_a_ids, outfit_b_ids, outfit_a_name, outfit_b_name,
+            winner, occasion, weather_summary)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            json.dumps(outfit_a_ids),
+            json.dumps(outfit_b_ids),
+            outfit_a_name,
+            outfit_b_name,
+            winner,
+            occasion,
+            weather_summary,
+        ),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def get_battle_history(
+    conn: sqlite3.Connection, limit: int = 20
+) -> list[dict]:
+    """Get recent battle history."""
+    rows = conn.execute(
+        "SELECT * FROM battles ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    results = []
+    for row in rows:
+        d = dict(row)
+        d["outfit_a_ids"] = json.loads(d["outfit_a_ids"])
+        d["outfit_b_ids"] = json.loads(d["outfit_b_ids"])
+        results.append(d)
+    return results
+
+
+def get_battle_item_stats(conn: sqlite3.Connection) -> dict:
+    """Compute per-item win/loss counts from battles.
+
+    Returns {"wins": {item_id: count}, "losses": {item_id: count}}.
+    """
+    battles = get_battle_history(conn, limit=1000)
+    wins: dict[int, int] = {}
+    losses: dict[int, int] = {}
+    for b in battles:
+        if b["winner"] == "a":
+            winner_ids, loser_ids = b["outfit_a_ids"], b["outfit_b_ids"]
+        else:
+            winner_ids, loser_ids = b["outfit_b_ids"], b["outfit_a_ids"]
+        for iid in winner_ids:
+            wins[iid] = wins.get(iid, 0) + 1
+        for iid in loser_ids:
+            losses[iid] = losses.get(iid, 0) + 1
+    return {"wins": wins, "losses": losses}
+
+
 def clear_all_data(conn: sqlite3.Connection) -> None:
     """Delete all data from all tables."""
     conn.executescript("""
         DELETE FROM wear_log;
         DELETE FROM outfits;
+        DELETE FROM battles;
         DELETE FROM wardrobe_items;
         DELETE FROM user_settings;
     """)
