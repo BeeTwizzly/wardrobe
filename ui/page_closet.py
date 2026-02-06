@@ -144,9 +144,9 @@ def _render_item_card(conn, item: dict, cfg):
     orig_path = cfg.images_dir / item["image_filename"]
 
     if thumb_path.exists():
-        st.image(str(thumb_path), use_container_width=True)
+        st.image(str(thumb_path), width="stretch")
     elif orig_path.exists():
-        st.image(str(orig_path), use_container_width=True)
+        st.image(str(orig_path), width="stretch")
     else:
         st.markdown("*No image*")
 

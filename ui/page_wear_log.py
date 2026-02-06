@@ -161,7 +161,7 @@ def _render_stats(conn, cfg):
                     if not img_path.exists():
                         img_path = cfg.images_dir / item["image_filename"]
                     if img_path.exists():
-                        st.image(str(img_path), use_container_width=True)
+                        st.image(str(img_path), width="stretch")
                     st.caption(f"**{item['name']}**")
                     last = item.get("last_worn")
                     st.caption(f"Last worn: {last or 'Never'}")

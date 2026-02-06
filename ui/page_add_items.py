@@ -198,7 +198,7 @@ def _render_item_card(conn, cfg, item_record: dict):
         if not img_path.exists():
             img_path = cfg.images_dir / image_filename
         if img_path.exists():
-            st.image(str(img_path), use_container_width=True)
+            st.image(str(img_path), width="stretch")
 
     with col_info:
         st.markdown(f"**{item_record['name']}**")
@@ -308,7 +308,7 @@ def _render_manual_form(conn, cfg, filename: str, file_bytes: bytes):
     col_img, col_form = st.columns([1, 2])
 
     with col_img:
-        st.image(file_bytes, caption=filename, use_container_width=True)
+        st.image(file_bytes, caption=filename, width="stretch")
 
     with col_form:
         form_key = f"manual_form_{filename}"

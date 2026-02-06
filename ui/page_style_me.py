@@ -124,7 +124,7 @@ def _render_outfit_column(conn, outfit: dict, cfg, label: str):
         if not img_path.exists():
             img_path = cfg.images_dir / item["image_filename"]
         if img_path.exists():
-            st.image(str(img_path), use_container_width=True)
+            st.image(str(img_path), width="stretch")
         st.caption(f"**{item['name']}** \u2014 {item['category']}")
     st.markdown('</div>', unsafe_allow_html=True)
 
