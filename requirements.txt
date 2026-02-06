@@ -1,0 +1,17 @@
+# DRIP - Daily Rotation & Intelligent Pairing
+# Python 3.11+
+
+# UI
+streamlit>=1.41.0
+
+# AI
+anthropic>=0.43.0
+
+# Image processing
+Pillow>=10.4.0
+
+# HTTP (async weather calls)
+httpx>=0.28.0
+
+# Testing
+pytest>=8.3.0
