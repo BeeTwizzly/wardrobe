@@ -117,6 +117,7 @@ def _render_outfit_column(conn, outfit: dict, cfg, label: str):
     """Render a single outfit in a column (vertical item layout)."""
     st.markdown(f"### {outfit.get('name', label)}")
 
+    st.markdown('<div class="battle-grid">', unsafe_allow_html=True)
     items = resolve_outfit_items(conn, outfit)
     for item in items:
         img_path = cfg.images_dir / "thumbnails" / item["image_filename"]
@@ -125,6 +126,7 @@ def _render_outfit_column(conn, outfit: dict, cfg, label: str):
         if img_path.exists():
             st.image(str(img_path), use_container_width=True)
         st.caption(f"**{item['name']}** \u2014 {item['category']}")
+    st.markdown('</div>', unsafe_allow_html=True)
 
     if outfit.get("reasoning"):
         st.markdown(f"*{outfit['reasoning']}*")
@@ -202,6 +204,17 @@ def _render_battle_stats(conn, cfg):
 
 def render():
     """Render the Style Me page."""
+    st.markdown("""
+    <style>
+    .battle-grid img {
+        width: 100%;
+        aspect-ratio: 3 / 4;
+        object-fit: cover;
+        border-radius: 8px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.header(":material/style: Style Me")
 
     cfg = get_config()
