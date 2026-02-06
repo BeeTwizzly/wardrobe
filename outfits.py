@@ -111,11 +111,15 @@ Return ONLY a JSON array of exactly 2 outfit objects:
 
 Return ONLY the JSON array. No markdown fencing."""
 
-    message = client.messages.create(
-        model=cfg.anthropic_model,
-        max_tokens=2048,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        message = client.messages.create(
+            model=cfg.anthropic_model,
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.APIError as e:
+        logger.warning("Anthropic API error: %s", e)
+        return [{"error": f"API error: {e}", "raw_response": str(e)}]
 
     raw_text = message.content[0].text.strip()
 
