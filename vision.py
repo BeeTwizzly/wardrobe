@@ -52,29 +52,33 @@ def identify_item(image_bytes: bytes, media_type: str = "image/jpeg") -> dict:
 
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
 
-    message = client.messages.create(
-        model=cfg.anthropic_model,
-        max_tokens=1024,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": b64_image,
+    try:
+        message = client.messages.create(
+            model=cfg.anthropic_model,
+            max_tokens=1024,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": b64_image,
+                            },
                         },
-                    },
-                    {
-                        "type": "text",
-                        "text": VISION_PROMPT,
-                    },
-                ],
-            }
-        ],
-    )
+                        {
+                            "type": "text",
+                            "text": VISION_PROMPT,
+                        },
+                    ],
+                }
+            ],
+        )
+    except anthropic.APIError as e:
+        logger.warning("Anthropic API error: %s", e)
+        return {"error": f"API error: {e}", "raw_response": str(e)}
 
     raw_text = message.content[0].text.strip()
 
