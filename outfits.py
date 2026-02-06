@@ -97,9 +97,9 @@ def generate_outfits(
 4. NEVER suggest items not in the wardrobe \u2014 use ONLY the item IDs provided
 5. Consider color coordination, formality matching, and seasonal appropriateness
 6. If locked items are specified, build the outfit AROUND them
-7. Avoid suggesting the same combination patterns repeatedly
+7. Generate exactly 2 outfit options. Make them genuinely distinct \u2014 different color palettes, different energy levels, different interpretations of the occasion. The user will pick a winner, so give them a real choice. Don't just swap one piece.
 
-Return ONLY a JSON array of 1-3 outfit objects:
+Return ONLY a JSON array of exactly 2 outfit objects:
 [
   {{
     "name": "creative outfit name",

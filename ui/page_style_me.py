@@ -1,4 +1,4 @@
-"""Style Me page - outfit generation interface with DRIP SCORE."""
+"""Style Me page - Outfit Battle format with DRIP SCORE."""
 
 import json
 import random
@@ -9,11 +9,14 @@ import streamlit as st
 from config import get_config
 from db import (
     get_all_items,
+    get_battle_history,
+    get_battle_item_stats,
     get_connection,
     get_item,
     get_setting,
     init_db,
     log_wear,
+    save_battle,
     save_outfit,
 )
 from outfits import (
@@ -49,24 +52,35 @@ ANALYSIS_LINES = [
     "Processing ensemble thermodynamics...",
 ]
 
+LOSER_DISMISSALS = [
+    "Not today, champ.",
+    "Back to the bench.",
+    "Maybe next time.",
+    "The people have spoken.",
+    "Sent to the shadow realm.",
+    "Better luck next rotation.",
+    "Close, but no drip.",
+    "Outfit left on read.",
+    "Respectfully... no.",
+    "Filed under 'almost'.",
+    "Wardrobe purgatory awaits.",
+    "That's a no from the council.",
+]
+
 
 def render_drip_score(outfit_index: int):
     """Render the theatrical DRIP SCORE animation for an outfit."""
     score_key = f"drip_score_{outfit_index}"
 
     if score_key not in st.session_state:
-        # Generate score
         score = random.randint(85, 97)
         st.session_state[score_key] = score
 
-        # Animation
         placeholder = st.empty()
 
-        # Step 1: Calculating...
         placeholder.markdown(":material/local_fire_department: **Calculating DRIP Score...**")
         time.sleep(0.5)
 
-        # Step 2: Flash analysis lines
         lines = random.sample(ANALYSIS_LINES, 4)
         for line in lines:
             placeholder.markdown(f":material/local_fire_department: *{line}*")
@@ -74,7 +88,6 @@ def render_drip_score(outfit_index: int):
 
         placeholder.empty()
 
-        # Step 3: Final reveal
         if score <= 89:
             quip = "Certified fresh. You're not trying too hard and it shows."
         elif score <= 93:
@@ -86,7 +99,6 @@ def render_drip_score(outfit_index: int):
         st.progress(score / 100)
         st.caption(quip)
     else:
-        # Already shown, just display the score
         score = st.session_state[score_key]
 
         if score <= 89:
@@ -99,6 +111,93 @@ def render_drip_score(outfit_index: int):
         st.markdown(f"### :material/local_fire_department: DRIP SCORE: {score}%")
         st.progress(score / 100)
         st.caption(quip)
+
+
+def _render_outfit_column(conn, outfit: dict, cfg, label: str):
+    """Render a single outfit in a column (vertical item layout)."""
+    st.markdown(f"### {outfit.get('name', label)}")
+
+    items = resolve_outfit_items(conn, outfit)
+    for item in items:
+        img_path = cfg.images_dir / "thumbnails" / item["image_filename"]
+        if not img_path.exists():
+            img_path = cfg.images_dir / item["image_filename"]
+        if img_path.exists():
+            st.image(str(img_path), use_container_width=True)
+        st.caption(f"**{item['name']}** \u2014 {item['category']}")
+
+    if outfit.get("reasoning"):
+        st.markdown(f"*{outfit['reasoning']}*")
+    if outfit.get("style_notes"):
+        st.info(f":material/auto_awesome: **Tip:** {outfit['style_notes']}")
+
+
+def _render_battle_stats(conn, cfg):
+    """Render battle statistics section."""
+    with st.expander(":material/analytics: Battle Stats"):
+        history = get_battle_history(conn, limit=1000)
+        if not history:
+            st.info("No battles yet. Generate some outfits and vote!")
+            return
+
+        st.metric("Total Battles", len(history))
+
+        stats = get_battle_item_stats(conn)
+        wins = stats["wins"]
+        losses = stats["losses"]
+
+        col_mvp, col_streak = st.columns(2)
+
+        with col_mvp:
+            st.markdown("**:material/favorite: Item MVP**")
+            if wins:
+                mvp_id = max(wins, key=wins.get)
+                mvp_item = get_item(conn, mvp_id)
+                if mvp_item:
+                    img_path = cfg.images_dir / "thumbnails" / mvp_item["image_filename"]
+                    if not img_path.exists():
+                        img_path = cfg.images_dir / mvp_item["image_filename"]
+                    if img_path.exists():
+                        st.image(str(img_path), width=120)
+                    st.markdown(f"**{mvp_item['name']}** \u2014 {wins[mvp_id]} wins")
+                else:
+                    st.caption("Item no longer in closet")
+            else:
+                st.caption("No wins yet")
+
+        with col_streak:
+            st.markdown("**:material/warning: Losing Streak**")
+            if losses:
+                # Find item with most losses and fewest (or zero) wins
+                streak_candidates = {}
+                for iid, loss_count in losses.items():
+                    win_count = wins.get(iid, 0)
+                    streak_candidates[iid] = loss_count - win_count
+                if streak_candidates:
+                    streak_id = max(streak_candidates, key=streak_candidates.get)
+                    streak_item = get_item(conn, streak_id)
+                    if streak_item:
+                        img_path = cfg.images_dir / "thumbnails" / streak_item["image_filename"]
+                        if not img_path.exists():
+                            img_path = cfg.images_dir / streak_item["image_filename"]
+                        if img_path.exists():
+                            st.image(str(img_path), width=120)
+                        st.markdown(
+                            f"**{streak_item['name']}** \u2014 "
+                            f"{losses[streak_id]} losses, {wins.get(streak_id, 0)} wins"
+                        )
+                    else:
+                        st.caption("Item no longer in closet")
+            else:
+                st.caption("No losses yet")
+
+        st.divider()
+        st.markdown("**Last 5 Battles**")
+        recent = get_battle_history(conn, limit=5)
+        for b in recent:
+            winner_label = b["outfit_a_name"] if b["winner"] == "a" else b["outfit_b_name"]
+            loser_label = b["outfit_b_name"] if b["winner"] == "a" else b["outfit_a_name"]
+            st.markdown(f"- **{winner_label}** :material/check_circle: vs {loser_label}")
 
 
 def render():
@@ -165,7 +264,6 @@ def render():
             lon = float(settings.get("location_lon", "-86.16"))
             location = settings.get("location_name", "Indianapolis, IN")
 
-            # Cache weather in session state
             cache_key = "weather_cache"
             if cache_key in st.session_state:
                 cached = st.session_state[cache_key]
@@ -232,18 +330,17 @@ def render():
             if key.startswith("drip_score_"):
                 del st.session_state[key]
         st.session_state.pop("generated_outfits", None)
+        st.session_state.pop("battle_voted", None)
 
         no_repeat = int(settings.get("no_repeat_days", "7"))
         style_vibe = settings.get("style_vibe", "smart casual")
 
-        # Get available items
         available = get_available_items(
             conn,
             no_repeat_days=no_repeat,
             exclude_ids=set(excluded_ids),
         )
 
-        # Add locked items back if they were filtered
         locked_items = [get_item(conn, lid) for lid in locked_ids]
         locked_items = [li for li in locked_items if li]
 
@@ -274,7 +371,7 @@ def render():
             st.session_state["outfit_weather_summary"] = weather_summary
             st.session_state["outfit_occasion"] = occasion
 
-    # --- Display results ---
+    # --- Display battle ---
     if "generated_outfits" in st.session_state:
         outfits = st.session_state["generated_outfits"]
 
@@ -284,72 +381,135 @@ def render():
             if st.button(":material/refresh: Try Again"):
                 st.session_state.pop("generated_outfits", None)
                 st.rerun()
+        elif len(outfits) < 2:
+            st.warning("AI returned fewer than 2 outfits. Try again.")
+            if st.button(":material/refresh: Try Again"):
+                st.session_state.pop("generated_outfits", None)
+                st.rerun()
+        elif st.session_state.get("battle_voted"):
+            # --- Post-vote display ---
+            vote = st.session_state["battle_voted"]
+            winner_idx = 0 if vote == "a" else 1
+            loser_idx = 1 if vote == "a" else 0
+            winner = outfits[winner_idx]
+            loser = outfits[loser_idx]
+
+            st.subheader(":material/auto_awesome: Winner!")
+
+            # Show winner outfit
+            _render_outfit_column(conn, winner, cfg, "Winner")
+
+            # DRIP SCORE for winner only
+            render_drip_score(winner_idx)
+
+            # Dismissal for loser
+            dismissal = random.choice(LOSER_DISMISSALS)
+            st.caption(f"~~{loser.get('name', 'Outfit')}~~ \u2014 {dismissal}")
+
+            # Save Outfit button for winner
+            if st.button(
+                ":material/favorite: Save Winning Outfit",
+                key="save_winner",
+                use_container_width=True,
+            ):
+                outfit_id = save_outfit(
+                    conn,
+                    name=winner.get("name", ""),
+                    occasion=st.session_state.get("outfit_occasion", ""),
+                    weather_summary=st.session_state.get("outfit_weather_summary", ""),
+                    item_ids=winner.get("item_ids", []),
+                    reasoning=winner.get("reasoning", ""),
+                )
+                st.toast(f":material/check_circle: Saved outfit (ID: {outfit_id})")
+
+            # Run it back
+            if st.button(
+                ":material/refresh: RUN IT BACK",
+                type="primary",
+                use_container_width=True,
+            ):
+                for key in list(st.session_state.keys()):
+                    if key.startswith("drip_score_"):
+                        del st.session_state[key]
+                st.session_state.pop("generated_outfits", None)
+                st.session_state.pop("battle_voted", None)
+                st.rerun()
         else:
-            st.subheader(f":material/auto_awesome: {len(outfits)} Outfit{'s' if len(outfits) > 1 else ''} Generated")
+            # --- Battle display (pre-vote) ---
+            st.subheader(":material/auto_awesome: Outfit Battle")
 
-            for idx, outfit in enumerate(outfits):
-                st.divider()
-                st.markdown(f"### {outfit.get('name', f'Outfit {idx + 1}')}")
+            outfit_a = outfits[0]
+            outfit_b = outfits[1]
 
-                # Display items horizontally
-                items = resolve_outfit_items(conn, outfit)
-                if items:
-                    item_cols = st.columns(len(items))
-                    for col, item in zip(item_cols, items):
-                        with col:
-                            img_path = cfg.images_dir / "thumbnails" / item["image_filename"]
-                            if not img_path.exists():
-                                img_path = cfg.images_dir / item["image_filename"]
-                            if img_path.exists():
-                                st.image(str(img_path), use_container_width=True)
-                            st.caption(f"**{item['name']}**\n{item['category']}")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                _render_outfit_column(conn, outfit_a, cfg, "Outfit A")
+            with col_b:
+                _render_outfit_column(conn, outfit_b, cfg, "Outfit B")
 
-                # Reasoning
-                if outfit.get("reasoning"):
-                    st.markdown(f"*{outfit['reasoning']}*")
-                if outfit.get("style_notes"):
-                    st.info(f":material/auto_awesome: **Tip:** {outfit['style_notes']}")
+            # Vote buttons
+            st.divider()
+            vote_a, vote_b = st.columns(2)
+            with vote_a:
+                if st.button(
+                    f":material/thumb_up: {outfit_a.get('name', 'Outfit A')}",
+                    key="vote_a",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    _cast_vote(conn, outfits, "a")
+                    st.rerun()
+            with vote_b:
+                if st.button(
+                    f":material/thumb_up: {outfit_b.get('name', 'Outfit B')}",
+                    key="vote_b",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    _cast_vote(conn, outfits, "b")
+                    st.rerun()
 
-                # DRIP SCORE
-                render_drip_score(idx)
+            # Deal me again
+            if st.button(
+                "Neither \u2014 deal me again :material/refresh:",
+                key="deal_again",
+                use_container_width=True,
+            ):
+                for key in list(st.session_state.keys()):
+                    if key.startswith("drip_score_"):
+                        del st.session_state[key]
+                st.session_state.pop("generated_outfits", None)
+                st.session_state.pop("battle_voted", None)
+                st.rerun()
 
-                # Action buttons
-                btn_cols = st.columns(3)
-                with btn_cols[0]:
-                    if st.button(
-                        ":material/check_circle: Wear This",
-                        key=f"wear_{idx}",
-                        use_container_width=True,
-                    ):
-                        for item in items:
-                            log_wear(conn, item["id"])
-                        st.toast(":material/check_circle: Logged! Looking good.")
-                with btn_cols[1]:
-                    if st.button(
-                        ":material/favorite: Save Outfit",
-                        key=f"save_{idx}",
-                        use_container_width=True,
-                    ):
-                        outfit_id = save_outfit(
-                            conn,
-                            name=outfit.get("name", ""),
-                            occasion=st.session_state.get("outfit_occasion", ""),
-                            weather_summary=st.session_state.get("outfit_weather_summary", ""),
-                            item_ids=outfit.get("item_ids", []),
-                            reasoning=outfit.get("reasoning", ""),
-                        )
-                        st.toast(f":material/check_circle: Saved outfit (ID: {outfit_id})")
-
-                with btn_cols[2]:
-                    if st.button(
-                        ":material/refresh: Regenerate",
-                        key=f"regen_{idx}",
-                        use_container_width=True,
-                    ):
-                        for key in list(st.session_state.keys()):
-                            if key.startswith("drip_score_"):
-                                del st.session_state[key]
-                        st.session_state.pop("generated_outfits", None)
-                        st.rerun()
+    # --- Battle stats at bottom ---
+    st.divider()
+    _render_battle_stats(conn, cfg)
 
     conn.close()
+
+
+def _cast_vote(conn, outfits: list[dict], winner: str):
+    """Process a battle vote: save battle, log wear for winner."""
+    outfit_a = outfits[0]
+    outfit_b = outfits[1]
+
+    save_battle(
+        conn,
+        outfit_a_ids=outfit_a.get("item_ids", []),
+        outfit_b_ids=outfit_b.get("item_ids", []),
+        outfit_a_name=outfit_a.get("name", "Outfit A"),
+        outfit_b_name=outfit_b.get("name", "Outfit B"),
+        winner=winner,
+        occasion=st.session_state.get("outfit_occasion", ""),
+        weather_summary=st.session_state.get("outfit_weather_summary"),
+    )
+
+    # Log wear for winning outfit items
+    winning = outfit_a if winner == "a" else outfit_b
+    winning_items = resolve_outfit_items(conn, winning)
+    for item in winning_items:
+        log_wear(conn, item["id"])
+
+    st.session_state["battle_voted"] = winner
+    st.toast(":material/check_circle: Logged! Looking good.")
